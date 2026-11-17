@@ -2,7 +2,8 @@
 """engine-search: search Gecko, Blink and WebKit source from one CLI.
 
 A thin dispatcher. Gecko goes to searchfox (firefox-main) directly; Blink and
-Chromium go to chromium-search; WebKit goes to webkit-search. `compare` runs
+Chromium use the source.chromium.org API (chromium.py); WebKit uses searchfox
+with a Sourcegraph fallback (webkit.py). `compare` runs
 the same query on several engines in parallel.
 """
 
@@ -21,6 +22,10 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import chromium
+import webkit
 
 VERSION = "engine-search/0.1"
 SEARCHFOX = os.environ.get("ENGINE_SEARCH_SEARCHFOX", "https://searchfox.org")
@@ -222,29 +227,8 @@ def gecko_rows(q: Query, path: str, limit: int, defs: bool) -> EngineResult:
 
 
 # ---------------------------------------------------------------------------
-# Blink / Chromium / WebKit: subprocess to the sibling CLIs
+# Blink / Chromium / WebKit
 # ---------------------------------------------------------------------------
-
-TOOLS = {
-    "chromium": ("ENGINE_SEARCH_CHROMIUM", "chromium-search"),
-    "webkit": ("ENGINE_SEARCH_WEBKIT", "webkit-search"),
-}
-
-
-def find_tool(name: str) -> list[str] | None:
-    """Return argv prefix for a sibling CLI, or None if it isn't installed."""
-    env_var, exe = TOOLS[name]
-    override = os.environ.get(env_var)
-    if override:
-        # An explicit setting wins; don't silently fall back to something else.
-        candidates = [override]
-    else:
-        here = Path(__file__).resolve().parent
-        candidates = [shutil.which(exe), str(here.parent / exe / f"{exe}.py")]
-    for c in candidates:
-        if c and Path(c).is_file():
-            return [sys.executable, c] if c.endswith(".py") else [c]
-    return None
 
 
 def find_searchfox_cli() -> str | None:
@@ -258,54 +242,76 @@ def find_searchfox_cli() -> str | None:
     return None
 
 
-def run_json(argv: list[str]) -> tuple[list[dict], list[str]]:
-    env = dict(os.environ, NO_COLOR="1")
-    proc = subprocess.run(
-        argv, capture_output=True, text=True, timeout=TIMEOUT, env=env
-    )
-    lines = [ln for ln in proc.stderr.splitlines() if ln.strip()]
-    if proc.returncode != 0:
-        raise RuntimeError(lines[-1] if lines else f"exit code {proc.returncode}")
-    notes = [ln.removeprefix("note: ") for ln in lines if ln.startswith("note:")]
-    out = proc.stdout.strip()
-    return (json.loads(out) if out else []), notes
-
-
-def tool_rows(engine: str, q: Query, path: str, limit: int, defs: bool) -> EngineResult:
+def chromium_rows(
+    engine: str, q: Query, path: str, limit: int, defs: bool
+) -> EngineResult:
     res = EngineResult(engine)
-    tool = "webkit" if engine == "webkit" else "chromium"
-    base = find_tool(tool)
-    if base is None:
-        env_var, exe = TOOLS[tool]
-        raise RuntimeError(f"{exe} not found (put it on PATH or set {env_var})")
-    if engine == "webkit":
-        argv = [*base, query_for_webkit(q, path), "-L", str(limit), "--json"]
-        if defs:
-            # webkit-search tags searchfox rows with a kind; over-fetch and filter.
-            argv[argv.index("-L") + 1] = str(max(limit * 10, 100))
-    else:
-        query = f"symbol:{q.text}" if defs else query_for_chromium(q)
-        argv = [*base, query, "-L", str(limit), "--json"]
-        if path:
-            argv += ["--path", path]
-    items, res.notes = run_json(argv)
-    for it in items:
-        kind = it.get("kind") or ("symbol" if defs and engine != "webkit" else None)
-        if defs and engine == "webkit" and not _is_definition_of(kind or "", q.text):
+    query = f"symbol:{q.text}" if defs else query_for_chromium(q)
+    if path:
+        # A file: filter, not chromium.set_scope(), since compare runs engines
+        # in parallel threads and set_scope changes module globals.
+        query = f"file:^{re.escape(path.strip('/'))}/ {query}"
+    for page in chromium.search_all(query, limit=limit, context_lines=1):
+        for f in page.files:
+            for sn in f.snippets:
+                for ln in sn.lines:
+                    if not ln.ranges or len(res.rows) >= limit:
+                        continue
+                    res.rows.append(
+                        Row(
+                            engine=engine,
+                            path=f.path,
+                            line=ln.line_number,
+                            text=ln.line_text.strip(),
+                            url=chromium.line_url(f.path, ln.line_number),
+                            source="grimoire",
+                            kind="symbol" if defs else None,
+                        )
+                    )
+    return res
+
+
+def webkit_rows(q: Query, path: str, limit: int, defs: bool) -> EngineResult:
+    res = EngineResult("webkit")
+    prefix = path.strip("/") + "/" if path.strip("/") else ""
+    if defs:
+        try:
+            syms = webkit.searchfox_symbols(q.text)
+        except webkit.SearchfoxUnavailable as exc:
+            raise RuntimeError(f"searchfox unavailable ({exc})") from exc
+        for sym in syms:
+            if not sym.path.startswith(prefix):
+                continue
+            res.rows.append(
+                Row(
+                    engine="webkit",
+                    path=sym.path,
+                    line=sym.line,
+                    text=sym.name,
+                    url=webkit.line_url(sym.path, sym.line, "", "searchfox"),
+                    source="searchfox",
+                    kind=f"Definitions ({sym.name})",
+                )
+            )
+            if len(res.rows) >= limit:
+                break
+        return res
+    out = webkit.search_files(query_for_webkit(q, path), limit=limit)
+    res.notes = out.alerts
+    for f, _si, ln in webkit.iter_lines(out.files, limit):
+        if not ln.ranges:
             continue
         res.rows.append(
             Row(
-                engine=engine,
-                path=it.get("path", ""),
-                line=int(it.get("line", 0)),
-                text=(it.get("snippet") or "").strip(),
-                url=it.get("url", ""),
-                source=it.get("source", "grimoire" if tool == "chromium" else ""),
-                kind=kind,
+                engine="webkit",
+                path=f.path,
+                line=ln.line_number,
+                text=ln.line_text.strip(),
+                url=webkit.line_url(f.path, ln.line_number, f.commit, f.source),
+                source=f.source,
+                kind=f.label or None,
             )
         )
-        if len(res.rows) >= limit:
-            break
     return res
 
 
@@ -315,10 +321,12 @@ def search_engine(
     try:
         if engine == "gecko":
             return gecko_rows(q, path, limit, defs)
-        return tool_rows(engine, q, path, limit, defs)
-    except subprocess.TimeoutExpired:
-        return EngineResult(engine, error=f"timed out after {TIMEOUT:g}s")
-    except (RuntimeError, ValueError, OSError) as exc:
+        if engine == "webkit":
+            return webkit_rows(q, path, limit, defs)
+        return chromium_rows(engine, q, path, limit, defs)
+    except TimeoutError:
+        return EngineResult(engine, error="timed out")
+    except (RuntimeError, ValueError, OSError, urllib.error.URLError) as exc:
         return EngineResult(engine, error=str(exc))
 
 
@@ -456,13 +464,23 @@ def cmd_gecko(argv: list[str]) -> int:
     return 0
 
 
-def cmd_passthrough(engine: str, argv: list[str]) -> int:
-    tool = "webkit" if engine == "webkit" else "chromium"
-    base = find_tool(tool)
-    if base is None:
-        env_var, exe = TOOLS[tool]
-        sys.stderr.write(f"Error: {exe} not found (put it on PATH or set {env_var})\n")
+def call_backend(main, argv: list[str]) -> int:
+    try:
+        main(argv)
+    except SystemExit as exc:
+        if isinstance(exc.code, str):
+            sys.stderr.write(exc.code + "\n")
+            return 1
+        return exc.code or 0
+    except BrokenPipeError:
+        raise
+    except (RuntimeError, ValueError, OSError, urllib.error.URLError) as exc:
+        sys.stderr.write(f"Error: {exc}\n")
         return 1
+    return 0
+
+
+def cmd_chromium(engine: str, argv: list[str]) -> int:
     if (
         engine == "blink"
         and argv
@@ -471,27 +489,13 @@ def cmd_passthrough(engine: str, argv: list[str]) -> int:
         and "--repo" not in argv
     ):
         argv = [*argv, "--path", DEFAULT_PATHS["blink"]]
-    if hasattr(os, "execv"):
-        sys.stdout.flush()
-        os.execv(base[0], [*base, *argv])
-    return subprocess.call([*base, *argv])
+    return call_backend(chromium.main, argv)
 
 
 def cmd_doctor() -> int:
     ok = True
     py = sys.version_info
-    sys.stdout.write(f"python      {py.major}.{py.minor}.{py.micro}\n")
-    for tool in ("chromium", "webkit"):
-        found = find_tool(tool)
-        exe = TOOLS[tool][1]
-        if found:
-            sys.stdout.write(f"{exe:<15} {paint(found[-1], 'green')}\n")
-        else:
-            ok = False
-            sys.stdout.write(
-                f"{exe:<15} {paint('missing', 'red')} "
-                f"(PATH, {TOOLS[tool][0]}, or ../{exe}/{exe}.py)\n"
-            )
+    sys.stdout.write(f"{'python':<15} {py.major}.{py.minor}.{py.micro}\n")
     cli = find_searchfox_cli()
     sys.stdout.write(
         f"{'searchfox-cli':<15} "
@@ -528,9 +532,10 @@ Usage: engine-search <engine|command> [args]
 Engines (arguments pass through to the engine's tool):
   gecko <query>            Firefox, via searchfox (firefox-main)
   gecko define <symbol>    Also calls-to, calls-from, field-layout (needs searchfox-cli)
-  blink <args>             chromium-search, search/find scoped to third_party/blink
-  chromium <args>          chromium-search, whole chromium/src
-  webkit <args>            webkit-search
+  blink <args>             Blink: like chromium, search/find scoped to third_party/blink
+  chromium <args>          Chromium: search, find, cat, ls, log, repos (`chromium -h`)
+  webkit <args>            WebKit: search, sym, find, cat, ls, define, ...
+                           (`engine-search webkit -h`)
 
 Commands:
   compare <query>          Same query on every engine, side by side
@@ -591,8 +596,10 @@ def main(argv: list[str]) -> int:
         return cmd_doctor()
     if cmd == "gecko":
         return cmd_gecko(rest)
-    if cmd in ("blink", "chromium", "webkit"):
-        return cmd_passthrough(cmd, rest)
+    if cmd == "webkit":
+        return call_backend(webkit.main, rest)
+    if cmd in ("blink", "chromium"):
+        return cmd_chromium(cmd, rest)
     sys.stderr.write(f"Error: unknown engine or command {argv[0]!r}\n\n{USAGE}")
     return 1
 
@@ -602,3 +609,7 @@ if __name__ == "__main__":
         sys.exit(main(sys.argv[1:]))
     except KeyboardInterrupt:
         sys.exit(130)
+    except BrokenPipeError:
+        # Output was piped to something like `head` that exited early.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        sys.exit(0)

@@ -2,41 +2,33 @@
 
 Search Gecko, Blink and WebKit source from one CLI, and compare how each engine implements something.
 
-A single-file Python script with zero dependencies. It's a thin dispatcher on top of tools that already do each engine well:
+Stdlib-only Python 3.11+, no dependencies to install.
 
 | Engine | Backend |
 | --- | --- |
-| `gecko` (`firefox`) | [searchfox](https://searchfox.org/firefox-main/) JSON API, plus [searchfox-cli](https://github.com/padenot/searchfox-cli) for `define`/`calls-to`/`calls-from`/`field-layout` |
-| `blink` | [chromium-search](https://github.com/92kns/chromium-search), scoped to `third_party/blink` |
-| `chromium` (`chrome`) | chromium-search, all of chromium/src |
-| `webkit` (`safari`) | [webkit-search](https://github.com/92kns/webkit-search) (searchfox wubkat, then Sourcegraph) |
+| `gecko` (`firefox`) | [searchfox](https://searchfox.org/firefox-main/) |
+| `blink` | source.chromium.org, search and find scoped to `third_party/blink` |
+| `chromium` (`chrome`) | source.chromium.org, all of chromium/src (also `--repo` for depot_tools and others) |
+| `webkit` (`safari`) | searchfox (wubkat) on main, Sourcegraph for older refs and rich queries, GitHub for `cat` |
 
 ## Install
 
 ```
 git clone https://github.com/92kns/engine-search
-git clone https://github.com/92kns/chromium-search
-git clone https://github.com/92kns/webkit-search
 ln -s "$PWD/engine-search/engine-search.py" ~/.local/bin/engine-search
 engine-search doctor
 ```
 
-Requires Python 3.11+. engine-search finds the other tools in this order:
-
-1. `ENGINE_SEARCH_CHROMIUM` / `ENGINE_SEARCH_WEBKIT` (path to the script). If set, nothing else is tried.
-2. `chromium-search` / `webkit-search` on `PATH`.
-3. `../chromium-search/chromium-search.py` and `../webkit-search/webkit-search.py`, next to this checkout.
-
-Gecko needs nothing extra. searchfox-cli is optional (looked up on `PATH`, `~/.mozbuild/bin`, `~/.cargo/bin`).
+Optional: [searchfox-cli](https://github.com/padenot/searchfox-cli) enables `define`, `calls-to`, `calls-from` and `field-layout` for gecko and webkit. engine-search looks for it on `PATH`, `~/.mozbuild/bin` and `~/.cargo/bin`.
 
 ## Usage
 
 ```
 engine-search compare <query>        # same query on every engine
 engine-search gecko <query>          # Firefox, via searchfox
-engine-search blink <args>           # chromium-search args, scoped to Blink
-engine-search chromium <args>        # chromium-search args, whole tree
-engine-search webkit <args>          # webkit-search args
+engine-search blink <args>           # like chromium, scoped to Blink
+engine-search chromium <args>        # search, find, cat, ls, log, repos
+engine-search webkit <args>          # search, sym, find, cat, ls, define, ...
 engine-search doctor                 # which backends are installed and reachable
 ```
 
@@ -57,7 +49,7 @@ The query has to be portable across engines: one term, a `"phrase"` or a `/regex
 - `--defs` shows only the definitions of a symbol.
 - `--<engine>-path` limits one engine to a directory.
 
-Engines run in parallel. If one fails or isn't installed, the others still print, and the failure is shown in that engine's header.
+Engines run in parallel. If one fails, the others still print, and the failure is shown in that engine's header.
 
 `--json` prints:
 
@@ -68,7 +60,7 @@ Engines run in parallel. If one fails or isn't installed, the others still print
     {"engine": "gecko", "path": "...", "line": 117, "text": "...", "url": "...",
      "source": "searchfox", "kind": "Definitions (SCROLLEND_LOG)"}
   ],
-  "errors": {"webkit": "webkit-search not found (...)"},
+  "errors": {"webkit": "searchfox unavailable (...)"},
   "notes": {"webkit": ["no searchfox results; checking Sourcegraph (older index)"]}
 }
 ```
@@ -89,18 +81,20 @@ engine-search webkit sym RenderBox --kind class
 
 ## Freshness
 
-All three indexes track main, so line numbers can differ by a few hours of commits. searchfox and source.chromium.org are usually hours fresh. webkit-search falls back to Sourcegraph, which can be days behind, and prints a note when it does. Older revisions are only available through `cat`/`ls`/`log --ref` on the engine tools.
+All three indexes track main, so line numbers can differ by a few hours of commits. searchfox and source.chromium.org are usually hours fresh. webkit falls back to Sourcegraph, which can be days behind, and prints a note when it does. Older revisions: `chromium cat|ls|log --ref <ref>` and `webkit search|cat|ls --ref <ref>`.
 
 ## Config
 
 | Variable | Default |
 | --- | --- |
-| `ENGINE_SEARCH_CHROMIUM` | (lookup) |
-| `ENGINE_SEARCH_WEBKIT` | (lookup) |
 | `ENGINE_SEARCH_GECKO_TREE` | `firefox-main` |
 | `ENGINE_SEARCH_SEARCHFOX` | `https://searchfox.org` |
-| `ENGINE_SEARCH_TIMEOUT` | `60` (seconds, per engine) |
+| `ENGINE_SEARCH_TIMEOUT` | `60` (seconds, gecko) |
+| `CR_SEARCH_PROJECT` / `CR_SEARCH_REPO` | `chromium` / `chromium/src` |
+| `SRC_ACCESS_TOKEN` | none (Sourcegraph token for webkit; raises rate limits) |
+
+Run `engine-search chromium -h` or `engine-search webkit -h` for the rest.
 
 ## License
 
-MIT
+MIT. `chromium.py` is based on [jclay/chromium-search](https://github.com/jclay/chromium-search) (MIT, Joel Clay). See LICENSE.
