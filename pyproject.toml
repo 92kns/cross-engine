@@ -1,5 +1,5 @@
 [tool.ruff]
-target-version = "py311"
+target-version = "py39"
 line-length = 88
 
 [tool.ruff.lint]
@@ -18,4 +18,4 @@ select = [
 docstring-code-format = true
 
 [tool.ty.environment]
-python-version = "3.11"
+python-version = "3.9"

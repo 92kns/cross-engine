@@ -2,7 +2,7 @@
 
 Search Gecko, Blink and WebKit source from one CLI, and compare how each engine implements something.
 
-Stdlib-only Python 3.11+, no dependencies to install.
+Stdlib-only Python 3.9+ (the macOS system `python3` works), no dependencies to install.
 
 | Engine | Backend |
 | --- | --- |

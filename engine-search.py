@@ -606,7 +606,9 @@ def main(argv: list[str]) -> int:
 
 if __name__ == "__main__":
     try:
-        sys.exit(main(sys.argv[1:]))
+        code = main(sys.argv[1:])
+        sys.stdout.flush()  # surface a broken pipe here, not at exit
+        sys.exit(code)
     except KeyboardInterrupt:
         sys.exit(130)
     except BrokenPipeError:

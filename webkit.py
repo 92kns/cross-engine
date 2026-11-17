@@ -22,7 +22,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -186,7 +186,7 @@ def _staleness(matches: list[dict[str, Any]]) -> str | None:
         fetched = datetime.fromisoformat(max(stamps).replace("Z", "+00:00"))
     except ValueError:
         return None
-    hours = (datetime.now(UTC) - fetched).total_seconds() / 3600
+    hours = (datetime.now(timezone.utc) - fetched).total_seconds() / 3600
     if hours < STALE_AFTER_HOURS:
         return None
     age = f"{hours / 24:.1f} days" if hours >= 48 else f"{hours:.0f} hours"
