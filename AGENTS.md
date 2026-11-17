@@ -1,4 +1,4 @@
-- Stdlib-only Python 3.9+ (macOS system python3 is 3.9; keep it working), no packaging. Three files:
+- Stdlib-only Python 3.13+, no packaging. `engine-search.py` has a PEP 723 header so `uv run` picks the right Python, and exits with a clear message on older versions. Three files:
   - `engine-search.py`: CLI, `compare`, `doctor`, and the gecko searchfox client.
   - `chromium.py`: source.chromium.org (Grimoire) client and CLI, for blink/chromium.
     Based on jclay/chromium-search (MIT); keep its header and the LICENSE line.

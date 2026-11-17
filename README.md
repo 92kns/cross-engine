@@ -2,7 +2,7 @@
 
 Search Gecko, Blink and WebKit source from one CLI, and compare how each engine implements something.
 
-Stdlib-only Python 3.9+ (the macOS system `python3` works), no dependencies to install.
+Stdlib-only Python 3.13+, no dependencies to install. If your `python3` is older (macOS ships 3.9), [uv](https://docs.astral.sh/uv/) fetches 3.13 for you: `uv run engine-search.py ...`.
 
 | Engine | Backend |
 | --- | --- |

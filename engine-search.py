@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+# /// script
+# requires-python = ">=3.13"
+# dependencies = []
+# ///
 """engine-search: search Gecko, Blink and WebKit source from one CLI.
 
 A thin dispatcher. Gecko goes to searchfox (firefox-main) directly; Blink and
@@ -22,6 +26,12 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+
+if sys.version_info < (3, 13):  # noqa: UP036 (friendly error on old Pythons)
+    sys.exit(
+        f"engine-search needs Python 3.13+ (this is {sys.version.split()[0]}).\n"
+        "Run it with uv instead: uv run engine-search.py ..."
+    )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import chromium

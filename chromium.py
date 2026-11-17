@@ -461,7 +461,7 @@ def search_all(
     context_lines: int = 1,
     api_key: str | None = None,
     timeout: float = 15.0,
-) -> Generator[SearchResult, None, None]:
+) -> Generator[SearchResult]:
     key = api_key or os.environ.get("CR_SEARCH_API_KEY", DEFAULT_API_KEY)
     page_token = ""
     match_count = 0
