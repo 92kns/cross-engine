@@ -41,6 +41,7 @@ engine-search compare '/ResizeObserver\w*Entry/' -L 5
 engine-search compare '"scroll end"' case:yes --engines gecko,chromium
 engine-search compare --defs ResizeObserverEntry
 engine-search compare --find pgo --engines gecko,chromium,webkit
+engine-search compare --flag scrollend
 engine-search compare ScrollSnap --gecko-path layout --webkit-path Source/WebCore
 ```
 
@@ -50,6 +51,7 @@ The query has to be portable across engines: one term, a `"phrase"` or a `/regex
 - `-L` is per engine (default 10).
 - `--defs` shows only the definitions of a symbol.
 - `--find` matches file and directory names instead of contents. For "how does each engine do X" questions, start here: it finds the docs, build config and scripts (`docs/pgo.md`, `tools/pgo/`, `Tools/Scripts/collect-pgo-profiles`).
+- `--flag` shows feature-flag status instead of code: is it on by default, experimental, or missing? It reads each engine's flag file from the current main branch: Gecko `StaticPrefList.yaml`, Blink `runtime_enabled_features.json5`, WebKit `UnifiedWebPreferences.yaml`. A flag matches when its name contains the term, ignoring case and punctuation, so `anchor-position` finds `AnchorPositionAdjustmentWithoutOverflow`. When an engine has no match, the feature may have shipped and had its flag removed, or may not exist yet.
 - Third-party, vendored and generated code is hidden by default. This covers `third_party/` (except Blink), `Source/ThirdParty/`, `PerformanceTests/`, `Websites/`, and searchfox's third-party and generated groups. Each engine's header shows how much was hidden. `--all` shows everything.
 - `--<engine>-path` limits one engine to a directory.
 

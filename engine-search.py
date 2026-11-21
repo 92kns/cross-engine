@@ -94,6 +94,7 @@ class Row:
     source: str
     kind: str | None = None
     vendored: bool = False
+    extra: dict | None = None  # mode-specific fields, e.g. a flag's status
 
     def as_dict(self) -> dict:
         d = {
@@ -106,6 +107,8 @@ class Row:
         }
         if self.kind:
             d["kind"] = self.kind
+        if self.extra:
+            d.update(self.extra)
         return d
 
     def location(self) -> str:
@@ -498,6 +501,228 @@ def find_engine(
 
 
 # ---------------------------------------------------------------------------
+# Feature flags (compare --flag)
+# ---------------------------------------------------------------------------
+
+FLAG_FILES = {
+    "gecko": "modules/libpref/init/StaticPrefList.yaml",
+    "blink": "third_party/blink/renderer/platform/runtime_enabled_features.json5",
+    "webkit": "Source/WTF/Scripts/Preferences/UnifiedWebPreferences.yaml",
+}
+FLAG_FILES["chromium"] = FLAG_FILES["blink"]
+
+# What each engine's status values mean, for the summary column.
+GECKO_VALUES = {
+    "true": "on",
+    "false": "off",
+    "@IS_NIGHTLY_BUILD@": "Nightly only",
+    "@IS_NOT_NIGHTLY_BUILD@": "off in Nightly",
+    "@IS_EARLY_BETA_OR_EARLIER@": "Nightly and early Beta",
+    "@IS_NOT_RELEASE_OR_BETA@": "Nightly and Dev Edition",
+    "@IS_NIGHTLY_OR_DEV_EDITION@": "Nightly and Dev Edition",
+    "@IS_ANDROID@": "Android only",
+    "@IS_NOT_ANDROID@": "not on Android",
+    "@IS_NOT_MOBILE@": "desktop only",
+}
+BLINK_STATUS = {
+    "stable": "on",
+    "experimental": "experimental web platform features flag",
+    "test": "tests only",
+    "": "off (no status)",
+}
+WEBKIT_STATUS = {
+    "stable": "on",
+    "mature": "on (mature)",
+    "preview": "Safari Technology Preview",
+    "testable": "tests only",
+    "developer": "developer setting",
+    "unstable": "off (unstable)",
+    "internal": "internal setting",
+    "embedder": "embedder setting",
+}
+
+
+def _norm(text: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", text.lower())
+
+
+def gecko_flags(lines: list[str], term: str) -> list[dict]:
+    """Parse StaticPrefList.yaml: `- name:` entries, tracking #if blocks."""
+    out: list[dict] = []
+    conds: list[str] = []
+    cur: dict | None = None
+    for i, line in enumerate(lines, 1):
+        directive = re.match(r"#(if|ifdef|ifndef|elif|else|endif)\b\s*(.*)", line)
+        if directive:
+            kind, arg = directive.groups()
+            if kind in ("if", "ifdef", "ifndef"):
+                conds.append(f"#{kind} {arg}".strip())
+            elif kind in ("elif", "else") and conds:
+                conds[-1] = f"#{kind} {arg}".strip() + f" (of {conds[-1]})"
+            elif kind == "endif" and conds:
+                conds.pop()
+            continue
+        m = re.match(r"- name: (\S+)", line)
+        if m:
+            cur = None
+            if term in _norm(m.group(1)):
+                cur = {"name": m.group(1), "line": i, "value": "", "cond": list(conds)}
+                out.append(cur)
+            continue
+        if cur is not None:
+            v = re.match(r"\s+value:\s*(.*)", line)
+            if v:
+                cur["value"] = v.group(1).strip()
+                cur["cond"] = list(conds)
+    for e in out:
+        raw = e["value"]
+        e["status"] = GECKO_VALUES.get(raw) or (f"value {raw}" if raw else "?")
+        if e["cond"]:
+            e["status"] += f"  [{'; '.join(e['cond'])}]"
+    return out
+
+
+def blink_flags(lines: list[str], term: str) -> list[dict]:
+    """Parse runtime_enabled_features.json5 feature entries."""
+    text = "\n".join(lines)
+    starts = [
+        (m.start(), m.group(1), text.count("\n", 0, m.start()) + 1)
+        for m in re.finditer(r'^\s*name:\s*"([^"]+)"', text, re.M)
+    ]
+    out = []
+    for idx, (pos, name, lno) in enumerate(starts):
+        if term not in _norm(name):
+            continue
+        end = starts[idx + 1][0] if idx + 1 < len(starts) else len(text)
+        body = text[pos:end]
+        sm = re.search(r'\bstatus:\s*(?:"(\w*)"|\{([^}]*)\})', body)
+        if sm and sm.group(2) is not None:
+            pairs = re.findall(r'"(\w+)":\s*"(\w*)"', sm.group(2))
+            status = ", ".join(f"{k}: {BLINK_STATUS.get(v, v)}" for k, v in pairs)
+            value = "{" + ", ".join(f"{k}: {v}" for k, v in pairs) + "}"
+        else:
+            value = sm.group(1) if sm else ""
+            status = BLINK_STATUS.get(value, value)
+        trial = re.search(r'origin_trial_feature_name:\s*"([^"]+)"', body)
+        if trial:
+            status += f"  [origin trial {trial.group(1)}]"
+        out.append({"name": name, "line": lno, "value": value, "status": status})
+    return out
+
+
+def webkit_flags(lines: list[str], term: str) -> list[dict]:
+    """Parse UnifiedWebPreferences.yaml top-level entries."""
+    out: list[dict] = []
+    cur: dict | None = None
+    in_default = False
+    for i, line in enumerate(lines, 1):
+        top = re.match(r"^(\w+):\s*$", line)
+        if top:
+            cur = None
+            in_default = False
+            if term in _norm(top.group(1)):
+                cur = {"name": top.group(1), "line": i, "value": "", "defaults": []}
+                out.append(cur)
+            continue
+        if cur is None:
+            continue
+        st = re.match(r"^  status:\s*(\S+)", line)
+        if st:
+            cur["value"] = st.group(1)
+        if re.match(r"^  defaultValue:", line):
+            in_default = True
+            continue
+        if in_default:
+            if re.match(r"^  \S", line) or not line.strip():
+                in_default = False
+            else:
+                kv = re.match(r"^\s+(\S+):\s*(\S.*)$", line)
+                if kv:
+                    cur["defaults"].append(f"{kv.group(1)}: {kv.group(2)}")
+    for e in out:
+        v = e["value"]
+        if v.endswith("_feature_status"):
+            # Set per platform by the build (e.g. Webgpu_feature_status).
+            e["status"] = f"set per build ({v})"
+        else:
+            e["status"] = WEBKIT_STATUS.get(v, v or "?")
+        if e["defaults"]:
+            e["status"] += f"  [{', '.join(e['defaults'])}]"
+    return out
+
+
+def flag_engine(engine: str, term: str, limit: int) -> EngineResult:
+    path = FLAG_FILES[engine]
+    norm = _norm(term)
+    if not norm:
+        return EngineResult(engine, error="empty flag name")
+    try:
+        if engine == "gecko":
+            lines = gecko_cat(path, None)
+            entries = gecko_flags(lines, norm)
+        elif engine == "webkit":
+            lines = webkit.fetch_file_contents(path)
+            entries = webkit_flags(lines, norm)
+        else:
+            try:
+                lines = chromium.fetch_file_contents(path)
+            except RuntimeError:
+                # source.chromium.org sometimes answers 401 for a moment.
+                lines = chromium.fetch_file_contents(path)
+            entries = blink_flags(lines, norm)
+    except (RuntimeError, ValueError, OSError, urllib.error.URLError) as exc:
+        return EngineResult(engine, error=str(exc))
+    res = EngineResult(engine)
+    for e in entries[:limit]:
+        if engine == "gecko":
+            url = f"{SEARCHFOX}/{GECKO_TREE}/source/{path}#{e['line']}"
+        elif engine == "webkit":
+            url = webkit.line_url(path, e["line"], "", "searchfox")
+        else:
+            url = chromium.line_url(path, e["line"])
+        res.rows.append(
+            Row(
+                engine=engine,
+                path=path,
+                line=e["line"],
+                text=e["name"],
+                url=url,
+                source="github" if engine != "blink" else "grimoire",
+                kind="flag",
+                extra={"flag": e["name"], "value": e["value"], "status": e["status"]},
+            )
+        )
+    if len(entries) > limit:
+        res.notes.append(f"{len(entries) - limit} more matching flags (-L)")
+    if not entries:
+        res.notes.append(
+            "no matching flag: it may have shipped and had its flag removed, "
+            f"or not exist yet. Try `compare {term}` to look for code."
+        )
+    return res
+
+
+def print_flags(results: list[EngineResult]) -> None:
+    for i, res in enumerate(results):
+        if i:
+            sys.stdout.write("\n")
+        path = FLAG_FILES[res.engine]
+        head = paint("== " + res.engine, "bold", "cyan") + " " + paint(path, "dim")
+        if res.error:
+            sys.stdout.write(f"{head}  {paint('error: ' + res.error, 'red')}\n")
+            continue
+        sys.stdout.write(head + "\n")
+        for msg in res.notes:
+            sys.stdout.write(paint(f"   note: {msg}", "dim") + "\n")
+        width = max((len(r.text) for r in res.rows), default=0)
+        for r in res.rows:
+            name = paint(r.text.ljust(width), "green")
+            sys.stdout.write(
+                f"{name}  {r.extra['status']}  {paint(':' + str(r.line), 'dim')}\n"
+            )
+
+
+# ---------------------------------------------------------------------------
 # Commands
 # ---------------------------------------------------------------------------
 
@@ -521,6 +746,7 @@ def cmd_compare(argv: list[str]) -> int:
     p.add_argument("--json", action="store_true")
     p.add_argument("--defs", action="store_true")
     p.add_argument("--find", action="store_true")
+    p.add_argument("--flag", action="store_true")
     p.add_argument("--all", action="store_true", dest="show_all")
     for e in (*ENGINES, "chromium"):
         p.add_argument(f"--{e}-path", default=None)
@@ -529,11 +755,35 @@ def cmd_compare(argv: list[str]) -> int:
     if opts.help or not opts.query:
         sys.stderr.write(COMPARE_USAGE)
         return 0 if opts.help else 1
-    if opts.defs and opts.find:
-        sys.stderr.write("Error: use --defs or --find, not both\n")
+    if opts.defs + opts.find + opts.flag > 1:
+        sys.stderr.write("Error: use one of --defs, --find or --flag\n")
         return 1
 
-    raw = " ".join(opts.query)
+    raw = " ".join(opts.query).strip()
+    if not raw:
+        sys.stderr.write(COMPARE_USAGE)
+        return 1
+    if opts.flag:
+        engines = parse_engines(opts.engines)
+        with ThreadPoolExecutor(max_workers=len(engines)) as pool:
+            results = list(pool.map(lambda e: flag_engine(e, raw, opts.limit), engines))
+        if opts.json:
+            write_json(
+                {
+                    "query": {
+                        "text": raw,
+                        "mode": "flag",
+                        "case": False,
+                        "type": "flag",
+                    },
+                    "results": [r.as_dict() for res in results for r in res.rows],
+                    "errors": {res.engine: res.error for res in results if res.error},
+                    "notes": {res.engine: res.notes for res in results if res.notes},
+                }
+            )
+        else:
+            print_flags(results)
+        return 0 if any(not r.error for r in results) else 1
     if opts.find:
         q = Query(raw, "path")
     else:
@@ -778,6 +1028,7 @@ Engines:
 Commands:
   compare <query>          Same query on every engine, side by side
   compare --find <name>    Compare file and directory names across engines
+  compare --flag <feature> Is it shipped, experimental or missing in each engine?
   doctor                   Check that each backend is reachable
   version                  Print the version
 
@@ -787,6 +1038,7 @@ Run `engine-search compare -h` for compare flags.
 Examples:
   engine-search compare scrollend
   engine-search compare --find pgo --engines gecko,chromium,webkit
+  engine-search compare --flag anchor-position
   engine-search compare '/ResizeObserver\\w*/' -L 5
   engine-search compare --defs ResizeObserverEntry --json
   engine-search gecko 'mach python' --path build/pgo
@@ -799,6 +1051,7 @@ Examples:
 COMPARE_USAGE = """\
 Usage: engine-search compare <query> [flags]
        engine-search compare --find <name> [flags]
+       engine-search compare --flag <feature> [flags]
 
 The query is one term, a "phrase" or a /regex/, plus optional case:yes.
 Each engine gets the same query translated to its own syntax.
@@ -811,13 +1064,17 @@ Flags:
   --find                   Match file and directory names, not file contents.
                            A good first step for "how does X work" questions.
   --defs                   Definitions of a symbol only
+  --flag                   Feature-flag status: is it on, experimental, or
+                           missing? Matches flag names containing the term,
+                           ignoring case and punctuation.
   --all                    Include third-party, vendored and generated code
                            (hidden by default: third_party/, Source/ThirdParty/,
                            PerformanceTests/, Websites/, searchfox's third-party
                            and generated groups)
   --json                   {query, results: [{engine,path,line,text,url,source,kind?}],
                             errors: {engine: msg}, notes: {engine: [msg]}}.
-                           line is 0 for file-name matches.
+                           line is 0 for file-name matches. --flag rows also
+                           have flag, value and status.
   --gecko-path <dir>       Limit gecko to a directory
   --blink-path <dir>       Limit blink (default: third_party/blink)
   --chromium-path <dir>    Limit chromium

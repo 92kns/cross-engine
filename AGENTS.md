@@ -19,6 +19,11 @@
   searchfox's third_party/generated groups), and `run_engine` drops them and notes how many.
   chromium (not blink) adds `-file:third_party/` to the query instead, because vendored LLVM
   copies can fill every page of results.
+- compare --flag (`flag_engine`): fetches the three flag files whole (`FLAG_FILES`) and parses
+  them with small line-based parsers (`gecko_flags` tracks `#if` blocks, `blink_flags` reads
+  `name:`/`status:` from JSON5, `webkit_flags` reads top-level keys and `defaultValue`). Status
+  meanings are in `GECKO_VALUES`, `BLINK_STATUS`, `WEBKIT_STATUS`. source.chromium.org
+  sometimes returns 401 for a moment; the Blink fetch retries once.
 - Grimoire treats bare text as regex: `query_for_chromium` escapes terms. Search and find
   only cover main; cat/ls/log take `--ref`.
 - webkit: Sourcegraph line numbers are 0-based (add 1); raw files need a non-default
