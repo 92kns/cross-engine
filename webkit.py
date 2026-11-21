@@ -275,11 +275,14 @@ def _read_capped(resp: Any, what: str) -> bytes:
     return data
 
 
-def _github_raw(path: str, ref: str | None) -> bytes | None:
+def _github_raw(
+    path: str, ref: str | None, owner_name: str | None = None
+) -> bytes | None:
     """Fetch from raw.githubusercontent.com. None means "try Sourcegraph instead"."""
-    if not REPO.startswith("github.com/"):
-        return None
-    owner_name = REPO.removeprefix("github.com/")
+    if owner_name is None:
+        if not REPO.startswith("github.com/"):
+            return None
+        owner_name = REPO.removeprefix("github.com/")
     url = (
         f"https://raw.githubusercontent.com/{urllib.parse.quote(owner_name)}/"
         f"{urllib.parse.quote(ref or 'HEAD', safe='/')}/{urllib.parse.quote(path)}"
@@ -320,6 +323,11 @@ def fetch_file_contents(path: str, ref: str | None = None) -> list[str]:
     data = _github_raw(path, ref)
     if data is None:
         data = _sourcegraph_raw(path, ref)
+    return decode_text(data, path)
+
+
+def decode_text(data: bytes, path: str) -> list[str]:
+    """Refuse LFS pointers and binary files; return the text as lines."""
     if data.startswith(LFS_POINTER):
         raise RuntimeError(f"{path} is a Git LFS pointer; the content isn't in git")
     if b"\0" in data[:8192]:

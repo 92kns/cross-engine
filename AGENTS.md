@@ -12,6 +12,13 @@
   Groups (normal/test/third_party/generated; skip `*`-prefixed keys) map a label
   ("Definitions (X)", "Uses (X)", "Textual Occurrences") to files with 1-based `lno`.
   define/calls-to/calls-from/field-layout go to `searchfox-cli` (optional), argv list, no shell.
+- gecko cat: raw.githubusercontent.com `mozilla-firefox/firefox` (no auth). gecko ls: GitHub
+  contents API (60/hour unauthenticated). gecko/webkit find: searchfox `q=path:<name>`, which
+  returns a "Files" label with no `lines`.
+- compare hides vendored code unless `--all`. Rows carry `vendored` (from `VENDORED_PATH` or
+  searchfox's third_party/generated groups), and `run_engine` drops them and notes how many.
+  chromium (not blink) adds `-file:third_party/` to the query instead, because vendored LLVM
+  copies can fill every page of results.
 - Grimoire treats bare text as regex: `query_for_chromium` escapes terms. Search and find
   only cover main; cat/ls/log take `--ref`.
 - webkit: Sourcegraph line numbers are 0-based (add 1); raw files need a non-default

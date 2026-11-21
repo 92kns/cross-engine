@@ -62,6 +62,8 @@ class SearchResult:
 # Multipart request builder
 # ---------------------------------------------------------------------------
 
+# Public key that the source.chromium.org web app sends from every browser.
+# Not a secret. Override with CR_SEARCH_API_KEY.
 DEFAULT_API_KEY = "AIzaSyCqPSptx9mClE5NU4cpfzr6cgdO_phV1lM"
 BASE_API_URL = "https://grimoireoss-pa.clients6.google.com"
 
