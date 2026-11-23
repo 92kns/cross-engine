@@ -1,6 +1,25 @@
 # engine-search
 
-Search Gecko, Blink and WebKit source from one CLI, and compare how each engine implements something.
+Pick a web platform topic and see how Gecko, Blink and WebKit each handle it: their code, feature flags, IDL, WPT expectations and recent commits, side by side.
+
+```
+$ engine-search compare --idl ResizeObserverEntry
+...
+member                     spec    gecko   blink   webkit
+target                     yes     yes     yes     yes
+contentRect                yes     yes     yes     yes
+borderBoxSize              yes     yes     yes     yes
+contentBoxSize             yes     yes     yes     yes
+devicePixelContentBoxSize  yes     yes     yes     -
+
+$ engine-search compare --wpt css/css-anchor-position/anchor-animation-dynamic-default.html
+== gecko  1 test/subtest(s) expected not to pass
+testing/web-platform/meta/.../anchor-animation-dynamic-default.html.ini:3: Animation with anchor() responds to position-anchor change: expected: FAIL
+
+== blink  no expectations or failure baseline: passes
+
+== webkit  baseline: 0 failing, 1 passing subtests
+```
 
 Stdlib-only Python 3.13+, no dependencies to install. If your `python3` is older (macOS ships 3.9), [uv](https://docs.astral.sh/uv/) fetches 3.13 for you: `uv run engine-search.py ...`.
 
@@ -24,56 +43,104 @@ Optional: [searchfox-cli](https://github.com/padenot/searchfox-cli) enables `def
 ## Usage
 
 ```
-engine-search compare <query>        # same query on every engine
-engine-search compare --find <name>  # compare file and directory names
-engine-search gecko <args>           # search, find, cat, ls, define, ...
-engine-search blink <args>           # like chromium, scoped to Blink
-engine-search chromium <args>        # search, find, cat, ls, log, repos
-engine-search webkit <args>          # search, sym, find, cat, ls, define, ...
-engine-search doctor                 # which backends are installed and reachable
+engine-search compare [mode] <query>  # one topic, all three engines
+engine-search gecko <args>            # search, find, cat, ls, define, ...
+engine-search chromium <args>         # search, find, cat, ls, log, repos
+engine-search blink <args>            # like chromium, scoped to third_party/blink
+engine-search webkit <args>           # search, sym, find, cat, ls, define, ...
+engine-search doctor                  # check that each backend is reachable
 ```
+
+Use `compare` to see the engines side by side, then the per-engine commands to dig into one.
 
 ### compare
 
-```
-engine-search compare scrollend
-engine-search compare '/ResizeObserver\w*Entry/' -L 5
-engine-search compare '"scroll end"' case:yes --engines gecko,chromium
-engine-search compare --defs ResizeObserverEntry
-engine-search compare --find pgo --engines gecko,chromium,webkit
-engine-search compare --flag scrollend
-engine-search compare ScrollSnap --gecko-path layout --webkit-path Source/WebCore
-```
+| Mode | Shows | Example |
+| --- | --- | --- |
+| (none) | Code matches, plus "start here" docs and build files | `compare scrollend` |
+| `--find` | File and directory names | `compare --find pgo --engines gecko,chromium,webkit` |
+| `--defs` | Definitions of a symbol | `compare --defs ResizeObserverEntry` |
+| `--flag` | Feature-flag status: on, experimental, or no flag | `compare --flag anchor-position` |
+| `--idl` | IDL members per engine, against the spec's IDL | `compare --idl ViewTransition` |
+| `--spec` | Code that cites a spec section | `compare --spec 'https://html.spec.whatwg.org/#navigate'` |
+| `--wpt` | Each engine's expectations for a WPT test | `compare --wpt resize-observer/observe-001.html` |
+| `--news` | Recent commits mentioning a term, or in a directory | `compare --news scrollend --since 3m` |
+| `--history` | First and latest commits mentioning a term | `compare --history scrollend` |
+| `--brief` | One Markdown page: flags, files, definitions, IDL | `compare --brief ResizeObserverEntry` |
 
-The query has to be portable across engines: one term, a `"phrase"` or a `/regex/`, plus optional `case:yes`. Each engine gets it in its own syntax. For anything engine-specific (`lang:`, `class:`, `sym --kind`, ...), call that engine directly.
+Common flags:
 
-- `--engines` takes a comma list (default `gecko,blink,webkit`).
+- `--engines` takes a comma list (default `gecko,blink,webkit`). `blink` only covers `third_party/blink`, so for build, infra or docs topics use `--engines gecko,chromium,webkit`.
 - `-L` is per engine (default 10).
-- `--defs` shows only the definitions of a symbol.
-- `--find` matches file and directory names instead of contents. For "how does each engine do X" questions, start here: it finds the docs, build config and scripts (`docs/pgo.md`, `tools/pgo/`, `Tools/Scripts/collect-pgo-profiles`).
-- `--flag` shows feature-flag status instead of code: is it on by default, experimental, or missing? It reads each engine's flag file from the current main branch: Gecko `StaticPrefList.yaml`, Blink `runtime_enabled_features.json5`, WebKit `UnifiedWebPreferences.yaml`. A flag matches when its name contains the term, ignoring case and punctuation, so `anchor-position` finds `AnchorPositionAdjustmentWithoutOverflow`. When an engine has no match, the feature may have shipped and had its flag removed, or may not exist yet.
-- Third-party, vendored and generated code is hidden by default. This covers `third_party/` (except Blink), `Source/ThirdParty/`, `PerformanceTests/`, `Websites/`, and searchfox's third-party and generated groups. Each engine's header shows how much was hidden. `--all` shows everything.
 - `--<engine>-path` limits one engine to a directory.
+- `--json` for agents (see below).
 
 Engines run in parallel. If one fails, the others still print, and the failure is shown in that engine's header.
 
-`blink` only covers `third_party/blink`. For build, infra or docs topics, use `--engines gecko,chromium,webkit`.
+#### Code search (no mode)
 
-`--json` prints:
+The query has to be portable across engines: one term, a `"phrase"` or a `/regex/`, plus optional `case:yes`. Each engine gets it in its own syntax. For anything engine-specific (`lang:`, `class:`, `sym --kind`, ...), call that engine directly.
+
+Each engine's header lists up to three "start here" files: docs and build config among the matches (`docs/pgo.md`, `BUILD.gn`, `*.xcconfig`). For "how does X work" questions, those are usually better entry points than the code hits.
+
+Third-party, vendored, generated and tooling code is hidden by default. This covers `third_party/` (except Blink), `Source/ThirdParty/`, `PerformanceTests/`, `Websites/`, dot-directories such as `.agents/`, and searchfox's third-party and generated groups. Each engine's header shows how much was hidden. `--all` shows everything.
+
+#### --flag
+
+Reads each engine's flag file from main: Gecko `StaticPrefList.yaml`, Blink `runtime_enabled_features.json5`, WebKit `UnifiedWebPreferences.yaml`. A flag matches when its name contains the term, ignoring case and punctuation. Real on/off switches are listed first; other prefs show as `(setting)`. When an engine has no match, the feature may have shipped and had its flag removed, or may not exist yet.
+
+#### --idl
+
+Finds `interface X` (including partial interfaces) in each engine's IDL, and lists the members. The `spec` column comes from WPT's `interfaces/*.idl`, which is generated from the spec. A member is shown in color when the engines disagree.
+
+#### --wpt
+
+Takes a test path relative to the WPT root, any engine's path to it, or a wpt.fyi URL. Shows:
+
+- Gecko: `testing/web-platform/meta/<test>.ini` and its non-PASS expectations.
+- Blink: `TestExpectations`, `NeverFixTests` and `SlowTests` lines, plus `-expected.txt` baselines and their failing-subtest count.
+- WebKit: `TestExpectations` lines, plus the `-expected.txt` baseline's FAIL and PASS counts.
+
+#### --news, --history
+
+These use GitHub's commit search on `mozilla-firefox/firefox`, `chromium/chromium` and `WebKit/WebKit`. With `--<engine>-path`, `--news` lists commits in that directory instead, filtered to the term (`*` for all). Without a token, GitHub allows 10 searches a minute, and `--history` uses two per engine.
+
+#### --json
 
 ```json
 {
-  "query": {"text": "scrollend", "mode": "term", "case": false, "type": "search"},
+  "query": {"text": "scrollend", "type": "search", "mode": "term", "case": false},
   "results": [
     {"engine": "gecko", "path": "...", "line": 117, "text": "...", "url": "...",
      "source": "searchfox", "kind": "Definitions (SCROLLEND_LOG)"}
   ],
   "errors": {"webkit": "searchfox unavailable (...)"},
-  "notes": {"webkit": ["no searchfox results; checking Sourcegraph (older index)"]}
+  "notes": {"webkit": ["no searchfox results; checking Sourcegraph (older index)"]},
+  "start": {"gecko": ["build/docs/pgo.md"]},
+  "summary": {"gecko": "..."}
 }
 ```
 
-`type` is `search`, `defs` or `find`. `line` is 0 for file-name matches. `kind` is only present when the backend reports it: searchfox labels, or `symbol` for blink `--defs`. `source` names the index that answered (`searchfox`, `grimoire`, `sourcegraph`).
+`type` is the mode. `line` is 0 for file-name matches and commits. `kind` says what a row is (a searchfox label, `flag`, `setting`, `idl`, `commit`, `metadata`, `expectation`, `baseline`, ...). Modes add fields: `flag`/`value`/`status` for `--flag`, `sha`/`date`/`author`/`subject` for commits, and `members` per engine for `--idl`. `--brief --json` returns `{query, spec_idl, engines: {engine: {flags, files, definitions, idl}}}`.
+
+### Using it from an agent
+
+Paste this into your project's `AGENTS.md` or `CLAUDE.md`:
+
+```markdown
+## Cross-engine source lookups
+
+`engine-search` (https://github.com/92kns/engine-search) answers "how do Gecko, Blink and
+WebKit handle X". Prefer it over web searches for engine internals. Add `--json` for
+structured output.
+
+- Overview of a feature: `engine-search compare --brief <Name>`
+- Shipped or flagged? `engine-search compare --flag <feature>`
+- API differences: `engine-search compare --idl <Interface>`
+- Why does a WPT test fail only in Firefox? `engine-search compare --wpt <test path>`
+- Where to start reading: `engine-search compare --find <name> --engines gecko,chromium,webkit`
+- Read a file: `engine-search gecko|chromium|webkit cat <path>`
+```
 
 ### Per engine
 

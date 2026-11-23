@@ -24,6 +24,19 @@
   `name:`/`status:` from JSON5, `webkit_flags` reads top-level keys and `defaultValue`). Status
   meanings are in `GECKO_VALUES`, `BLINK_STATUS`, `WEBKIT_STATUS`. source.chromium.org
   sometimes returns 401 for a moment; the Blink fetch retries once.
+- compare modes (`MODES`, `cmd_compare`): each mode is one function per engine that returns an
+  `EngineResult`, wrapped in `run_engine` so errors become an `errors` entry.
+  - `--news`/`--history`: GitHub commit search (`commit_search`, `GITHUB_REPOS`); with a path,
+    `path_history` (GitHub commits API, or Grimoire history for chromium/blink).
+  - `--idl`: `IDL_DEF` regex per backend, then `idl_block` + `idl_members` on the fetched file.
+    WPT's `interfaces/*.idl` copies are the spec column (`_is_spec_copy`). Grimoire mishandles
+    `(^|...)` in patterns, so anchors stay outside groups.
+  - `--spec`: `spec_regex` builds host + `\S*#` + fragment; `_rx` escapes only regex
+    metacharacters (some backends reject `\#` and `\-`).
+  - `--wpt`: `wpt_engine` first checks that the test exists in the engine's WPT copy, then
+    reads Gecko meta `.ini`, Blink/WebKit `TestExpectations` and `-expected.txt` baselines.
+  - `--brief`: runs flags, find, defs and IDL per engine in one thread pool.
+- "start here" (`DOC_BUILD`, in `run_engine`): docs/build paths among the content hits.
 - Grimoire treats bare text as regex: `query_for_chromium` escapes terms. Search and find
   only cover main; cat/ls/log take `--ref`.
 - webkit: Sourcegraph line numbers are 0-based (add 1); raw files need a non-default
