@@ -1,9 +1,9 @@
-# engine-search
+# cross-engine
 
 Pick a web platform topic and see how Gecko, Blink and WebKit each handle it: their code, feature flags, IDL, WPT expectations and recent commits, side by side.
 
 ```
-$ engine-search compare --idl ResizeObserverEntry
+$ cross-engine compare --idl ResizeObserverEntry
 ...
 member                     spec    gecko   blink   webkit
 target                     yes     yes     yes     yes
@@ -12,7 +12,7 @@ borderBoxSize              yes     yes     yes     yes
 contentBoxSize             yes     yes     yes     yes
 devicePixelContentBoxSize  yes     yes     yes     -
 
-$ engine-search compare --wpt css/css-anchor-position/anchor-animation-dynamic-default.html
+$ cross-engine compare --wpt css/css-anchor-position/anchor-animation-dynamic-default.html
 == gecko  1 test/subtest(s) expected not to pass
 testing/web-platform/meta/.../anchor-animation-dynamic-default.html.ini:3: Animation with anchor() responds to position-anchor change: expected: FAIL
 
@@ -21,7 +21,7 @@ testing/web-platform/meta/.../anchor-animation-dynamic-default.html.ini:3: Anima
 == webkit  baseline: 0 failing, 1 passing subtests
 ```
 
-Stdlib-only Python 3.13+, no dependencies to install. If your `python3` is older (macOS ships 3.9), [uv](https://docs.astral.sh/uv/) fetches 3.13 for you: `uv run engine-search.py ...`.
+Stdlib-only Python 3.13+, no dependencies to install. If your `python3` is older (macOS ships 3.9), [uv](https://docs.astral.sh/uv/) fetches 3.13 for you: `uv run cross-engine.py ...`.
 
 | Engine | Backend |
 | --- | --- |
@@ -33,22 +33,22 @@ Stdlib-only Python 3.13+, no dependencies to install. If your `python3` is older
 ## Install
 
 ```
-git clone https://github.com/92kns/engine-search
-ln -s "$PWD/engine-search/engine-search.py" ~/.local/bin/engine-search
-engine-search doctor
+git clone https://github.com/92kns/cross-engine
+ln -s "$PWD/cross-engine/cross-engine.py" ~/.local/bin/cross-engine
+cross-engine doctor
 ```
 
-Optional: [searchfox-cli](https://github.com/padenot/searchfox-cli) enables `define`, `calls-to`, `calls-from` and `field-layout` for gecko and webkit. engine-search looks for it on `PATH`, `~/.mozbuild/bin` and `~/.cargo/bin`.
+Optional: [searchfox-cli](https://github.com/padenot/searchfox-cli) enables `define`, `calls-to`, `calls-from` and `field-layout` for gecko and webkit. cross-engine looks for it on `PATH`, `~/.mozbuild/bin` and `~/.cargo/bin`.
 
 ## Usage
 
 ```
-engine-search compare [mode] <query>  # one topic, all three engines
-engine-search gecko <args>            # search, find, cat, ls, define, ...
-engine-search chromium <args>         # search, find, cat, ls, log, repos
-engine-search blink <args>            # like chromium, scoped to third_party/blink
-engine-search webkit <args>           # search, sym, find, cat, ls, define, ...
-engine-search doctor                  # check that each backend is reachable
+cross-engine compare [mode] <query>  # one topic, all three engines
+cross-engine gecko <args>            # search, find, cat, ls, define, ...
+cross-engine chromium <args>         # search, find, cat, ls, log, repos
+cross-engine blink <args>            # like chromium, scoped to third_party/blink
+cross-engine webkit <args>           # search, sym, find, cat, ls, define, ...
+cross-engine doctor                  # check that each backend is reachable
 ```
 
 Use `compare` to see the engines side by side, then the per-engine commands to dig into one.
@@ -130,29 +130,29 @@ Paste this into your project's `AGENTS.md` or `CLAUDE.md`:
 ```markdown
 ## Cross-engine source lookups
 
-`engine-search` (https://github.com/92kns/engine-search) answers "how do Gecko, Blink and
+`cross-engine` (https://github.com/92kns/cross-engine) answers "how do Gecko, Blink and
 WebKit handle X". Prefer it over web searches for engine internals. Add `--json` for
 structured output.
 
-- Overview of a feature: `engine-search compare --brief <Name>`
-- Shipped or flagged? `engine-search compare --flag <feature>`
-- API differences: `engine-search compare --idl <Interface>`
-- Why does a WPT test fail only in Firefox? `engine-search compare --wpt <test path>`
-- Where to start reading: `engine-search compare --find <name> --engines gecko,chromium,webkit`
-- Read a file: `engine-search gecko|chromium|webkit cat <path>`
+- Overview of a feature: `cross-engine compare --brief <Name>`
+- Shipped or flagged? `cross-engine compare --flag <feature>`
+- API differences: `cross-engine compare --idl <Interface>`
+- Why does a WPT test fail only in Firefox? `cross-engine compare --wpt <test path>`
+- Where to start reading: `cross-engine compare --find <name> --engines gecko,chromium,webkit`
+- Read a file: `cross-engine gecko|chromium|webkit cat <path>`
 ```
 
 ### Per engine
 
 ```
-engine-search gecko 'mach python' --path build/pgo
-engine-search gecko find profileserver
-engine-search gecko cat build/pgo/profileserver.py
-engine-search gecko ls build/pgo
-engine-search gecko define 'mozilla::dom::ResizeObserver'
-engine-search blink 'class:ResizeObserver lang:cpp'
-engine-search blink cat third_party/blink/renderer/core/resize_observer/resize_observer.h
-engine-search webkit sym RenderBox --kind class
+cross-engine gecko 'mach python' --path build/pgo
+cross-engine gecko find profileserver
+cross-engine gecko cat build/pgo/profileserver.py
+cross-engine gecko ls build/pgo
+cross-engine gecko define 'mozilla::dom::ResizeObserver'
+cross-engine blink 'class:ResizeObserver lang:cpp'
+cross-engine blink cat third_party/blink/renderer/core/resize_observer/resize_observer.h
+cross-engine webkit sym RenderBox --kind class
 ```
 
 `gecko` search takes searchfox's free text: any words, plus `case:yes`, or a `/regex/`. `gecko ls` uses the GitHub API, which allows 60 listings an hour without a token.
@@ -167,13 +167,13 @@ All three indexes track main, so line numbers can differ by a few hours of commi
 
 | Variable | Default |
 | --- | --- |
-| `ENGINE_SEARCH_GECKO_TREE` | `firefox-main` |
-| `ENGINE_SEARCH_SEARCHFOX` | `https://searchfox.org` |
-| `ENGINE_SEARCH_TIMEOUT` | `60` (seconds, gecko) |
+| `CROSS_ENGINE_GECKO_TREE` | `firefox-main` |
+| `CROSS_ENGINE_SEARCHFOX` | `https://searchfox.org` |
+| `CROSS_ENGINE_TIMEOUT` | `60` (seconds, gecko) |
 | `CR_SEARCH_PROJECT` / `CR_SEARCH_REPO` | `chromium` / `chromium/src` |
 | `SRC_ACCESS_TOKEN` | none (Sourcegraph token for webkit; raises rate limits) |
 
-Run `engine-search chromium -h` or `engine-search webkit -h` for the rest.
+Run `cross-engine chromium -h` or `cross-engine webkit -h` for the rest.
 
 ## License
 

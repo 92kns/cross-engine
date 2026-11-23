@@ -1,8 +1,8 @@
 # Based on chromium-search (https://github.com/jclay/chromium-search).
 # Copyright (c) 2026 Joel Clay. MIT License, see LICENSE.
-"""Chromium backend for engine-search (source.chromium.org / Grimoire API).
+"""Chromium backend for cross-engine (source.chromium.org / Grimoire API).
 
-Run it as `engine-search chromium ...` or `engine-search blink ...`.
+Run it as `cross-engine chromium ...` or `cross-engine blink ...`.
 """
 
 from __future__ import annotations
@@ -1044,7 +1044,7 @@ def run_repos(*, as_json: bool = False) -> None:
 
 
 USAGE = """\
-Usage: engine-search chromium [command] <query> [flags]
+Usage: cross-engine chromium [command] <query> [flags]
 
 Commands:
   search <query>   Search Chromium source code
@@ -1077,26 +1077,26 @@ Flags (all):
   -h, --help              Show this help
 
 Examples:
-  engine-search chromium base::span
-  engine-search chromium 'lang:cpp class:WebContents'
-  engine-search chromium 'usage:TabStripModel -file:out/' -C 3
-  engine-search chromium 'file:*_test.cc base::span' -L 10
-  engine-search chromium 'function:CreateForTesting lang:cpp' --json
-  engine-search chromium ScrollEnd --path third_party/blink/renderer/core
-  engine-search chromium gclient_eval --repo chromium/tools/depot_tools
-  engine-search chromium find web_contents.h -L 20
-  engine-search chromium cat content/public/browser/web_contents.h
-  engine-search chromium cat chrome/browser/BUILD.gn --ref refs/tags/144.0.7559.98
-  engine-search chromium ls third_party/crossbench
-  engine-search chromium log base/containers/span.h -L 5
-  engine-search chromium repos
-  engine-search chromium syntax
+  cross-engine chromium base::span
+  cross-engine chromium 'lang:cpp class:WebContents'
+  cross-engine chromium 'usage:TabStripModel -file:out/' -C 3
+  cross-engine chromium 'file:*_test.cc base::span' -L 10
+  cross-engine chromium 'function:CreateForTesting lang:cpp' --json
+  cross-engine chromium ScrollEnd --path third_party/blink/renderer/core
+  cross-engine chromium gclient_eval --repo chromium/tools/depot_tools
+  cross-engine chromium find web_contents.h -L 20
+  cross-engine chromium cat content/public/browser/web_contents.h
+  cross-engine chromium cat chrome/browser/BUILD.gn --ref refs/tags/144.0.7559.98
+  cross-engine chromium ls third_party/crossbench
+  cross-engine chromium log base/containers/span.h -L 5
+  cross-engine chromium repos
+  cross-engine chromium syntax
 """
 
 
 def main(argv: list[str]) -> None:
     parser = argparse.ArgumentParser(
-        prog="engine-search chromium",
+        prog="cross-engine chromium",
         description="Search Chromium source code",
         add_help=False,
     )
@@ -1142,7 +1142,7 @@ def main(argv: list[str]) -> None:
     if subcommand == "log":
         if not rest:
             sys.stderr.write(
-                "Usage: engine-search chromium log <path> [--ref <ref>] [-L n]\n"
+                "Usage: cross-engine chromium log <path> [--ref <ref>] [-L n]\n"
             )
             sys.exit(1)
         run_log(rest, ref=ref, limit=opts.limit or 10, as_json=as_json)
@@ -1151,7 +1151,7 @@ def main(argv: list[str]) -> None:
     if subcommand == "cat":
         if not rest:
             sys.stderr.write(
-                "Usage: engine-search chromium cat <path> [--ref <ref>] [-n]\n"
+                "Usage: cross-engine chromium cat <path> [--ref <ref>] [-n]\n"
             )
             sys.exit(1)
         run_cat(rest, ref=ref, number_lines=opts.number, as_json=as_json)
@@ -1165,7 +1165,7 @@ def main(argv: list[str]) -> None:
 
     if subcommand == "find":
         if not rest:
-            sys.stderr.write("Usage: engine-search chromium find <name> [-L n]\n")
+            sys.stderr.write("Usage: cross-engine chromium find <name> [-L n]\n")
             sys.exit(1)
         run_find(rest, limit=opts.limit or 10, as_json=as_json)
         return

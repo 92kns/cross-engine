@@ -1,10 +1,10 @@
-- Stdlib-only Python 3.13+, no packaging. `engine-search.py` has a PEP 723 header so `uv run` picks the right Python, and exits with a clear message on older versions. Three files:
-  - `engine-search.py`: CLI, `compare`, `doctor`, and the gecko searchfox client.
+- Stdlib-only Python 3.13+, no packaging. `cross-engine.py` has a PEP 723 header so `uv run` picks the right Python, and exits with a clear message on older versions. Three files:
+  - `cross-engine.py`: CLI, `compare`, `doctor`, and the gecko searchfox client.
   - `chromium.py`: source.chromium.org (Grimoire) client and CLI, for blink/chromium.
     Based on jclay/chromium-search (MIT); keep its header and the LICENSE line.
   - `webkit.py`: WebKit client and CLI (searchfox wubkat first, Sourcegraph fallback,
     GitHub raw for cat).
-- `engine-search chromium|blink|webkit ...` calls `chromium.main(argv)` / `webkit.main(argv)`
+- `cross-engine chromium|blink|webkit ...` calls `chromium.main(argv)` / `webkit.main(argv)`
   in-process. `compare` calls `chromium.search_all` and `webkit.search_files` from threads.
   Don't call `chromium.set_scope()` from compare: it sets module globals. Use a
   `file:^dir/` filter instead.
@@ -48,4 +48,4 @@
 
 - Format: `uvx ruff@0.14.0 format *.py`
 - Lint: `uvx ruff@0.14.0 check *.py`
-- Smoke test: `python3 engine-search.py doctor`
+- Smoke test: `python3 cross-engine.py doctor`

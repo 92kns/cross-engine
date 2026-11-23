@@ -3,7 +3,7 @@
 # requires-python = ">=3.13"
 # dependencies = []
 # ///
-"""engine-search: search Gecko, Blink and WebKit source from one CLI.
+"""cross-engine: search Gecko, Blink and WebKit source from one CLI.
 
 Gecko goes to searchfox (firefox-main) directly; Blink and Chromium use the
 source.chromium.org API (chromium.py); WebKit uses searchfox with a Sourcegraph
@@ -31,20 +31,20 @@ from pathlib import Path
 
 if sys.version_info < (3, 13):  # noqa: UP036 (friendly error on old Pythons)
     sys.exit(
-        f"engine-search needs Python 3.13+ (this is {sys.version.split()[0]}).\n"
-        "Run it with uv instead: uv run engine-search.py ..."
+        f"cross-engine needs Python 3.13+ (this is {sys.version.split()[0]}).\n"
+        "Run it with uv instead: uv run cross-engine.py ..."
     )
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import chromium
 import webkit
 
-VERSION = "engine-search/0.2"
-SEARCHFOX = os.environ.get("ENGINE_SEARCH_SEARCHFOX", "https://searchfox.org")
-GECKO_TREE = os.environ.get("ENGINE_SEARCH_GECKO_TREE", "firefox-main")
+VERSION = "cross-engine/0.2"
+SEARCHFOX = os.environ.get("CROSS_ENGINE_SEARCHFOX", "https://searchfox.org")
+GECKO_TREE = os.environ.get("CROSS_ENGINE_GECKO_TREE", "firefox-main")
 GECKO_GITHUB = "mozilla-firefox/firefox"  # official git repo; raw files and ls
 WEBKIT_TREE = "wubkat"
-TIMEOUT = float(os.environ.get("ENGINE_SEARCH_TIMEOUT", "60"))
+TIMEOUT = float(os.environ.get("CROSS_ENGINE_TIMEOUT", "60"))
 
 ENGINES = ("gecko", "blink", "webkit")
 ALIASES = {"firefox": "gecko", "chrome": "chromium", "safari": "webkit"}
@@ -167,8 +167,8 @@ def parse_query(raw: str) -> Query:
     raise ValueError(
         'compare takes one term, a "phrase" or a /regex/, plus optional case:yes.\n'
         "For other queries, search one engine: "
-        "engine-search gecko|chromium|webkit '<query>'.\n"
-        "To compare file names instead, use: engine-search compare --find <name>"
+        "cross-engine gecko|chromium|webkit '<query>'.\n"
+        "To compare file names instead, use: cross-engine compare --find <name>"
     )
 
 
@@ -1461,7 +1461,7 @@ MODES = ("defs", "find", "flag", "news", "history", "idl", "spec", "wpt", "brief
 
 
 def cmd_compare(argv: list[str]) -> int:
-    p = argparse.ArgumentParser(prog="engine-search compare", add_help=False)
+    p = argparse.ArgumentParser(prog="cross-engine compare", add_help=False)
     p.add_argument("query", nargs="*")
     p.add_argument("--engines", default=",".join(ENGINES))
     p.add_argument("-L", "--limit", type=int, default=10)
@@ -1633,11 +1633,11 @@ def cmd_gecko(argv: list[str]) -> int:
             )
             return 1
         if len(argv) < 2:
-            sys.stderr.write(f"Usage: engine-search gecko {sub} <symbol>\n")
+            sys.stderr.write(f"Usage: cross-engine gecko {sub} <symbol>\n")
             return 1
         return subprocess.call([cli, "-R", GECKO_TREE, f"--{sub}", *argv[1:]])
 
-    p = argparse.ArgumentParser(prog="engine-search gecko", add_help=False)
+    p = argparse.ArgumentParser(prog="cross-engine gecko", add_help=False)
     p.add_argument("args", nargs="*")
     p.add_argument("-L", "--limit", type=int, default=None)
     p.add_argument("--path", default="")
@@ -1654,7 +1654,7 @@ def cmd_gecko(argv: list[str]) -> int:
     try:
         if sub == "cat":
             if not rest:
-                sys.stderr.write("Usage: engine-search gecko cat <path> [--ref]\n")
+                sys.stderr.write("Usage: cross-engine gecko cat <path> [--ref]\n")
                 return 1
             lines = gecko_cat(rest, opts.ref)
             if opts.json:
@@ -1689,7 +1689,7 @@ def cmd_gecko(argv: list[str]) -> int:
         note("--ref only applies to cat and ls; searchfox only indexes main")
     if sub == "find":
         if not rest:
-            sys.stderr.write("Usage: engine-search gecko find <name>\n")
+            sys.stderr.write("Usage: cross-engine gecko find <name>\n")
             return 1
         res = find_engine("gecko", rest, opts.path, opts.limit or 30)
     else:
@@ -1778,7 +1778,7 @@ def cmd_doctor() -> int:
 # ---------------------------------------------------------------------------
 
 USAGE = """\
-Usage: engine-search <engine|command> [args]
+Usage: cross-engine <engine|command> [args]
 
 Engines:
   gecko <args>             Firefox: search, find, cat, ls, define, ... (`gecko -h`)
@@ -1798,27 +1798,27 @@ Commands:
   version                  Print the version
 
 Aliases: firefox=gecko, chrome=chromium, safari=webkit.
-Run `engine-search compare -h` for compare flags.
+Run `cross-engine compare -h` for compare flags.
 
 Examples:
-  engine-search compare scrollend
-  engine-search compare --find pgo --engines gecko,chromium,webkit
-  engine-search compare --flag anchor-position
-  engine-search compare --idl ResizeObserverEntry
-  engine-search compare --wpt css/css-anchor-position/anchor-scroll-001.html
-  engine-search compare --news scrollend --since 3m
-  engine-search compare --spec 'https://html.spec.whatwg.org/#navigate'
-  engine-search compare '/ResizeObserver\\w*/' -L 5
-  engine-search compare --defs ResizeObserverEntry --json
-  engine-search gecko 'mach python' --path build/pgo
-  engine-search gecko cat build/pgo/profileserver.py
-  engine-search gecko define 'mozilla::dom::ResizeObserver'
-  engine-search blink 'class:ResizeObserver lang:cpp'
-  engine-search webkit sym RenderBox --kind class
+  cross-engine compare scrollend
+  cross-engine compare --find pgo --engines gecko,chromium,webkit
+  cross-engine compare --flag anchor-position
+  cross-engine compare --idl ResizeObserverEntry
+  cross-engine compare --wpt css/css-anchor-position/anchor-scroll-001.html
+  cross-engine compare --news scrollend --since 3m
+  cross-engine compare --spec 'https://html.spec.whatwg.org/#navigate'
+  cross-engine compare '/ResizeObserver\\w*/' -L 5
+  cross-engine compare --defs ResizeObserverEntry --json
+  cross-engine gecko 'mach python' --path build/pgo
+  cross-engine gecko cat build/pgo/profileserver.py
+  cross-engine gecko define 'mozilla::dom::ResizeObserver'
+  cross-engine blink 'class:ResizeObserver lang:cpp'
+  cross-engine webkit sym RenderBox --kind class
 """
 
 COMPARE_USAGE = """\
-Usage: engine-search compare [mode] <query> [flags]
+Usage: cross-engine compare [mode] <query> [flags]
 
 Pick a topic and see all three engines. Without a mode, compare searches code:
 the query is one term, a "phrase" or a /regex/, plus optional case:yes, and
@@ -1869,11 +1869,11 @@ a token, and --history uses two per engine.
 """
 
 GECKO_USAGE = """\
-Usage: engine-search gecko [search] <query> [-L n] [--path dir] [--json]
-       engine-search gecko find <name> [-L n] [--path dir] [--json]
-       engine-search gecko cat <path> [--ref ref] [-n] [--json]
-       engine-search gecko ls [dir] [--ref ref] [--json]
-       engine-search gecko define|calls-to|calls-from|field-layout <symbol>
+Usage: cross-engine gecko [search] <query> [-L n] [--path dir] [--json]
+       cross-engine gecko find <name> [-L n] [--path dir] [--json]
+       cross-engine gecko cat <path> [--ref ref] [-n] [--json]
+       cross-engine gecko ls [dir] [--ref ref] [--json]
+       cross-engine gecko define|calls-to|calls-from|field-layout <symbol>
            [searchfox-cli flags]
 
 search goes to searchfox (firefox-main) and takes searchfox's free text: any

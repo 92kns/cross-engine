@@ -1,8 +1,8 @@
-"""WebKit backend for engine-search.
+"""WebKit backend for cross-engine.
 
 Searches on main go to searchfox (wubkat); Sourcegraph handles refs, context
 lines and richer queries. cat reads from GitHub. Run it as
-`engine-search webkit ...`.
+`cross-engine webkit ...`.
 """
 
 from __future__ import annotations
@@ -33,7 +33,7 @@ from typing import Any
 ENDPOINT = os.environ.get("SRC_ENDPOINT", "https://sourcegraph.com").rstrip("/")
 REPO = os.environ.get("WEBKIT_SEARCH_REPO", "github.com/WebKit/WebKit")
 TOKEN = os.environ.get("SRC_ACCESS_TOKEN", "")
-USER_AGENT = "engine-search/0.1"
+USER_AGENT = "cross-engine/0.1"
 TIMEOUT = 60.0
 SEARCHFOX = os.environ.get("SEARCHFOX_URL", "https://searchfox.org").rstrip("/")
 SEARCHFOX_TREE = os.environ.get("SEARCHFOX_TREE", "wubkat")
@@ -973,7 +973,7 @@ def run_ls(path: str, *, ref: str | None) -> None:
 # ---------------------------------------------------------------------------
 
 USAGE = """\
-Usage: engine-search webkit [command] <query> [flags]
+Usage: cross-engine webkit [command] <query> [flags]
 
 Commands:
   search <query>   Search WebKit source code
@@ -1020,20 +1020,20 @@ Environment:
   WEBKIT_SEARCH_REPO      Repo to search (default: github.com/WebKit/WebKit)
 
 Examples:
-  engine-search webkit RenderBox::computeLogicalWidth
-  engine-search webkit 'lang:c++ file:^Source/WebCore/css/ CSSValueID' -C 2
-  engine-search webkit 'type:commit flexbox after:"2 weeks ago"'
-  engine-search webkit sym RenderFlexibleBox --kind class
-  engine-search webkit calls-to 'WebCore::RenderBox::computeLogicalWidth' --depth 2
-  engine-search webkit find RenderBox.h
-  engine-search webkit cat Source/WebCore/rendering/RenderBox.h -n
-  engine-search webkit cat Source/WTF/wtf/Vector.h --ref safari-7620-branch
-  engine-search webkit ls Source/WebCore/layout
+  cross-engine webkit RenderBox::computeLogicalWidth
+  cross-engine webkit 'lang:c++ file:^Source/WebCore/css/ CSSValueID' -C 2
+  cross-engine webkit 'type:commit flexbox after:"2 weeks ago"'
+  cross-engine webkit sym RenderFlexibleBox --kind class
+  cross-engine webkit calls-to 'WebCore::RenderBox::computeLogicalWidth' --depth 2
+  cross-engine webkit find RenderBox.h
+  cross-engine webkit cat Source/WebCore/rendering/RenderBox.h -n
+  cross-engine webkit cat Source/WTF/wtf/Vector.h --ref safari-7620-branch
+  cross-engine webkit ls Source/WebCore/layout
 """
 
 
 def main(argv: list[str]) -> None:
-    parser = argparse.ArgumentParser(prog="engine-search webkit", add_help=False)
+    parser = argparse.ArgumentParser(prog="cross-engine webkit", add_help=False)
     parser.add_argument("args", nargs="*")
     parser.add_argument("-L", "--limit", type=int, default=None)
     parser.add_argument("-C", "--context", type=int, default=0)
@@ -1064,21 +1064,21 @@ def main(argv: list[str]) -> None:
         sys.stdout.write(SYNTAX_REFERENCE)
     elif sub in SEARCHFOX_CLI_COMMANDS:
         if not rest:
-            sys.exit(f"Usage: engine-search webkit {sub} <symbol>")
+            sys.exit(f"Usage: cross-engine webkit {sub} <symbol>")
         run_searchfox_cli(sub, rest, opts.depth)
     elif sub == "cat":
         if not rest:
-            sys.exit("Usage: engine-search webkit cat <path> [--ref <ref>] [-n]")
+            sys.exit("Usage: cross-engine webkit cat <path> [--ref <ref>] [-n]")
         run_cat(rest, ref=opts.ref, number_lines=opts.number)
     elif sub == "ls":
         run_ls(rest, ref=opts.ref)
     elif sub == "find":
         if not rest:
-            sys.exit("Usage: engine-search webkit find <name>")
+            sys.exit("Usage: cross-engine webkit find <name>")
         run_find(rest, limit=opts.limit or 10)
     elif sub == "sym":
         if not rest:
-            sys.exit("Usage: engine-search webkit sym <name> [--kind <kind>]")
+            sys.exit("Usage: cross-engine webkit sym <name> [--kind <kind>]")
         run_sym(
             rest,
             limit=opts.limit or 30,
