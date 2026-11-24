@@ -50,7 +50,16 @@ ENGINES = ("gecko", "blink", "webkit")
 ALIASES = {"firefox": "gecko", "chrome": "chromium", "safari": "webkit"}
 # blink is chromium/src scoped to third_party/blink; chromium is the whole tree.
 DEFAULT_PATHS = {"blink": "third_party/blink"}
-SEARCHFOX_CLI_CMDS = ("define", "calls-to", "calls-from", "field-layout")
+SEARCHFOX_CLI_CMDS = (
+    "define",
+    "calls-to",
+    "calls-from",
+    "calls-between",
+    "field-layout",
+    "can-gc",
+    "function-at",
+    "spec-refs",
+)
 GROUP_ORDER = ("normal", "test", "third_party", "generated")
 # searchfox puts these result groups aside; compare hides them by default.
 VENDORED_GROUPS = ("third_party", "generated")
@@ -1624,17 +1633,22 @@ def print_compare(results: list[EngineResult], paths: dict[str, str]) -> None:
 
 def cmd_gecko(argv: list[str]) -> int:
     sub = argv[0] if argv else ""
-    if sub in SEARCHFOX_CLI_CMDS:
+    if sub in (*SEARCHFOX_CLI_CMDS, "sf"):
         cli = find_searchfox_cli()
         if not cli:
             sys.stderr.write(
-                "Error: searchfox-cli not found (needed for define/calls-to/"
-                "calls-from/field-layout). Install: cargo binstall searchfox-cli\n"
+                f"Error: searchfox-cli not found (needed for `gecko {sub}`). "
+                "Install: cargo binstall searchfox-cli\n"
             )
             return 1
         if len(argv) < 2:
-            sys.stderr.write(f"Usage: cross-engine gecko {sub} <symbol>\n")
+            arg = "<searchfox-cli args>" if sub == "sf" else "<arg>"
+            sys.stderr.write(f"Usage: cross-engine gecko {sub} {arg}\n")
             return 1
+        if sub == "sf":
+            # Raw passthrough; default to our tree unless the caller picks one.
+            tree = [] if {"-R", "--repo"} & set(argv[1:]) else ["-R", GECKO_TREE]
+            return subprocess.call([cli, *tree, *argv[1:]])
         return subprocess.call([cli, "-R", GECKO_TREE, f"--{sub}", *argv[1:]])
 
     p = argparse.ArgumentParser(prog="cross-engine gecko", add_help=False)
@@ -1873,13 +1887,21 @@ Usage: cross-engine gecko [search] <query> [-L n] [--path dir] [--json]
        cross-engine gecko find <name> [-L n] [--path dir] [--json]
        cross-engine gecko cat <path> [--ref ref] [-n] [--json]
        cross-engine gecko ls [dir] [--ref ref] [--json]
-       cross-engine gecko define|calls-to|calls-from|field-layout <symbol>
+       cross-engine gecko define|calls-to|calls-from|field-layout|can-gc <symbol>
            [searchfox-cli flags]
+       cross-engine gecko calls-between <A,B> [--depth n]
+       cross-engine gecko function-at <path:line>
+       cross-engine gecko spec-refs <spec url>
+       cross-engine gecko sf <any searchfox-cli args>
 
 search goes to searchfox (firefox-main) and takes searchfox's free text: any
 words, plus optional case:yes, or a /regex/. find matches file names. cat reads
 from GitHub (mozilla-firefox/firefox); ls uses the GitHub API, which allows 60
-listings an hour without a token. define and friends need searchfox-cli.
+listings an hour without a token.
+
+define, calls-*, field-layout, can-gc, function-at, spec-refs and sf need
+searchfox-cli. sf passes everything through, with -R firefox-main unless you
+give -R (e.g. `gecko sf -R mozilla-esr140 -q AudioStream --cpp`).
 """
 
 

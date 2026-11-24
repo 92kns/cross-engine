@@ -38,7 +38,7 @@ ln -s "$PWD/cross-engine/cross-engine.py" ~/.local/bin/cross-engine
 cross-engine doctor
 ```
 
-Optional: [searchfox-cli](https://github.com/padenot/searchfox-cli) enables `define`, `calls-to`, `calls-from` and `field-layout` for gecko and webkit. cross-engine looks for it on `PATH`, `~/.mozbuild/bin` and `~/.cargo/bin`.
+Optional: [searchfox-cli](https://github.com/padenot/searchfox-cli) enables `define`, `calls-to`, `calls-from` and `field-layout` for gecko and webkit, and for gecko also `calls-between`, `can-gc`, `function-at`, `spec-refs`, and `gecko sf <args>`, which passes any searchfox-cli arguments through (for `--blame`, release trees with `-R`, file-type filters). cross-engine looks for it on `PATH`, `~/.mozbuild/bin` and `~/.cargo/bin`.
 
 ## Usage
 
