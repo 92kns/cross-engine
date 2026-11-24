@@ -24,7 +24,9 @@
   them with small line-based parsers (`gecko_flags` tracks `#if` blocks, `blink_flags` reads
   `name:`/`status:` from JSON5, `webkit_flags` reads top-level keys and `defaultValue`). Status
   meanings are in `GECKO_VALUES`, `BLINK_STATUS`, `WEBKIT_STATUS`. source.chromium.org
-  sometimes returns 401 for a moment; the Blink fetch retries once.
+  sometimes returns 401 for a moment; the Blink fetch retries once. Batch calls (search,
+  find, history) get the 401 inside a 200 response: `chromium._send_batch` raises on it
+  and retries with a fresh request.
 - compare modes (`MODES`, `cmd_compare`): each mode is one function per engine that returns an
   `EngineResult`, wrapped in `run_engine` so errors become an `errors` entry.
   - `--news`/`--history`: GitHub commit search (`commit_search`, `GITHUB_REPOS`); with a path,

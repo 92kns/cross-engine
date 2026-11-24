@@ -18,7 +18,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from typing import Any, TextIO
 
@@ -171,40 +171,63 @@ def extract_json(response_text: str) -> Any:
     return json.loads(m.group(0))
 
 
+def _send_batch(
+    build: Callable[[str], tuple[str, str]], timeout: float
+) -> dict[str, Any]:
+    """POST a /batch request and return the inner JSON, raising on API errors.
+
+    `build(boundary)` returns (url, body). The outer response is 200 even when
+    the inner request fails, and the inner one is often a 401 that clears on a
+    fresh request (new boundary and session ids), so retry those a few times.
+    """
+    for attempt in range(4):
+        url, body = build(build_boundary())
+        req = urllib.request.Request(
+            url,
+            data=body.encode(),
+            headers={
+                "Content-Type": "text/plain; charset=UTF-8",
+                "Origin": "https://source.chromium.org",
+                "Referer": "https://source.chromium.org/",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            if resp.status != 200:
+                raise RuntimeError(f"API request failed: {resp.status} {resp.reason}")
+            raw = extract_json(resp.read().decode())
+        err = raw.get("error") if isinstance(raw, dict) else None
+        if not err:
+            return raw
+        if err.get("code") != 401 or attempt == 3:
+            raise RuntimeError(err.get("message", "API error"))
+        time.sleep(0.3 * (attempt + 1))
+    raise AssertionError("unreachable")
+
+
 def batch_get(path_and_query: str, timeout: float = 15.0) -> dict[str, Any]:
     """Run a GET through the same multipart /batch envelope used for search."""
     key = os.environ.get("CR_SEARCH_API_KEY", DEFAULT_API_KEY)
-    boundary = build_boundary()
-    url = f"{BASE_API_URL}/batch?%24ct=multipart%2Fmixed%3B%20boundary%3D{boundary}"
-    body = "\r\n".join(
-        [
-            f"--{boundary}",
-            "Content-Type: application/http",
-            f"Content-ID: <response-{boundary}+gapiRequest@googleapis.com>",
-            "",
-            f"GET {path_and_query}&key={key}",
-            "X-JavaScript-User-Agent: google-api-javascript-client/1.1.0",
-            "X-Requested-With: XMLHttpRequest",
-            "",
-            f"--{boundary}--",
-            "",
-        ]
-    )
-    req = urllib.request.Request(
-        url,
-        data=body.encode(),
-        headers={
-            "Content-Type": "text/plain; charset=UTF-8",
-            "Origin": "https://source.chromium.org",
-            "Referer": "https://source.chromium.org/",
-        },
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        raw = extract_json(resp.read().decode())
-    if "error" in raw:
-        raise RuntimeError(raw["error"].get("message", "API error"))
-    return raw
+
+    def build(boundary: str) -> tuple[str, str]:
+        url = f"{BASE_API_URL}/batch?%24ct=multipart%2Fmixed%3B%20boundary%3D{boundary}"
+        body = "\r\n".join(
+            [
+                f"--{boundary}",
+                "Content-Type: application/http",
+                f"Content-ID: <response-{boundary}+gapiRequest@googleapis.com>",
+                "",
+                f"GET {path_and_query}&key={key}",
+                "X-JavaScript-User-Agent: google-api-javascript-client/1.1.0",
+                "X-Requested-With: XMLHttpRequest",
+                "",
+                f"--{boundary}--",
+                "",
+            ]
+        )
+        return url, body
+
+    return _send_batch(build, timeout)
 
 
 def fetch_history(path: str, ref: str, limit: int) -> list[dict[str, Any]]:
@@ -304,23 +327,10 @@ def fetch_suggest(
     payload: dict[str, Any],
     timeout: float,
 ) -> list[str]:
-    boundary = build_boundary()
-    url, body = build_request(boundary, api_key, payload, path="/v1/contents/suggest")
-    req = urllib.request.Request(
-        url,
-        data=body.encode(),
-        headers={
-            "Content-Type": "text/plain; charset=UTF-8",
-            "Origin": "https://source.chromium.org",
-            "Referer": "https://source.chromium.org/",
-        },
-        method="POST",
+    raw = _send_batch(
+        lambda b: build_request(b, api_key, payload, path="/v1/contents/suggest"),
+        timeout,
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        if resp.status != 200:
-            raise RuntimeError(f"API request failed: {resp.status}")
-        text = resp.read().decode()
-    raw = extract_json(text)
     return [
         s["fileSpec"]["path"]
         for s in raw.get("suggestions", [])
@@ -437,24 +447,9 @@ def fetch_search(
     payload: dict[str, Any],
     timeout: float,
 ) -> SearchResult:
-    boundary = build_boundary()
-    url, body = build_request(boundary, api_key, payload)
-    req = urllib.request.Request(
-        url,
-        data=body.encode(),
-        headers={
-            "Content-Type": "text/plain; charset=UTF-8",
-            "Origin": "https://source.chromium.org",
-            "Referer": "https://source.chromium.org/",
-        },
-        method="POST",
+    return parse_response(
+        _send_batch(lambda b: build_request(b, api_key, payload), timeout)
     )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        if resp.status != 200:
-            raise RuntimeError(f"API request failed: {resp.status} {resp.reason}")
-        text = resp.read().decode()
-    raw = extract_json(text)
-    return parse_response(raw)
 
 
 def search_all(
